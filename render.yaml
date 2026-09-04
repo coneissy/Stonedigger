@@ -1,0 +1,17 @@
+services:
+  - type: web
+    name: stonedigger
+    runtime: node
+    plan: free
+    buildCommand: npm install
+    startCommand: npm start
+    healthCheckPath: /health
+    envVars:
+      - key: BOT_TOKEN
+        sync: false
+      - key: OXSHARE_URL
+        value: https://my.oxshare.com/register?referral=019ba1ff-6ca2-70b3-9def-036b59457426
+      - key: COMMUNITY_URL
+        value: https://t.me/ImperialEliteGoldskull
+      - key: DATA_FILE
+        value: ./data/users.json
