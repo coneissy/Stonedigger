@@ -1,3 +1,6 @@
+import http from 'node:http';
+import { promises as fs } from 'node:fs';
+import path from 'node:path';
 import { Telegraf, Markup } from 'telegraf';
 
 const token = process.env.BOT_TOKEN || process.env.TELEGRAM_BOT_TOKEN;
@@ -5,38 +8,15 @@ if (!token) throw new Error('BOT_TOKEN is required');
 
 const bot = new Telegraf(token);
 const users = new Map();
-
 const OXSHARE_URL = process.env.OXSHARE_URL || 'https://my.oxshare.com/register?referral=019ba1ff-6ca2-70b3-9def-036b59457426';
 const COMMUNITY_URL = process.env.COMMUNITY_URL || 'https://t.me/ImperialEliteGoldskull';
+const PORT = Number(process.env.PORT || 10000);
+const DATA_FILE = process.env.DATA_FILE || './data/users.json';
 
 const text = {
-  en: {
-    welcome: '🔥 Welcome to StoneDigger!\n\nBuild your network, complete the available actions, and track your referrals.',
-    register: '🚀 Register / Start',
-    community: '👥 Join Community',
-    stats: '📊 My Referrals',
-    share: '🔗 Share Referral',
-    statsText: (count) => `📊 Your direct referrals: ${count}`,
-    shareText: (link) => `Invite friends with your StoneDigger link:\n${link}`
-  },
-  ar: {
-    welcome: '🔥 أهلاً بك في StoneDigger!\n\nابنِ شبكتك، نفّذ الإجراءات المتاحة، وتابع إحالاتك.',
-    register: '🚀 التسجيل / البدء',
-    community: '👥 انضم للمجتمع',
-    stats: '📊 إحالاتي',
-    share: '🔗 مشاركة رابط الإحالة',
-    statsText: (count) => `📊 عدد إحالاتك المباشرة: ${count}`,
-    shareText: (link) => `ادعُ أصدقاءك عبر رابط StoneDigger الخاص بك:\n${link}`
-  },
-  fr: {
-    welcome: '🔥 Bienvenue sur StoneDigger !\n\nDéveloppez votre réseau, effectuez les actions disponibles et suivez vos parrainages.',
-    register: '🚀 S’inscrire / Commencer',
-    community: '👥 Rejoindre la communauté',
-    stats: '📊 Mes parrainages',
-    share: '🔗 Partager le parrainage',
-    statsText: (count) => `📊 Vos parrainages directs : ${count}`,
-    shareText: (link) => `Invitez vos amis avec votre lien StoneDigger :\n${link}`
-  }
+  en: { welcome: '🔥 Welcome to StoneDigger!\n\nBuild your network, complete the available actions, and track your referrals.', register: '🚀 Register / Start', community: '👥 Join Community', stats: '📊 My Referrals', share: '🔗 Share Referral', statsText: (n) => `📊 Your direct referrals: ${n}`, shareText: (link) => `Invite friends with your StoneDigger link:\n${link}` },
+  ar: { welcome: '🔥 أهلاً بك في StoneDigger!\n\nابنِ شبكتك، نفّذ الإجراءات المتاحة، وتابع إحالاتك.', register: '🚀 التسجيل / البدء', community: '👥 انضم للمجتمع', stats: '📊 إحالاتي', share: '🔗 مشاركة رابط الإحالة', statsText: (n) => `📊 عدد إحالاتك المباشرة: ${n}`, shareText: (link) => `ادعُ أصدقاءك عبر رابط StoneDigger الخاص بك:\n${link}` },
+  fr: { welcome: '🔥 Bienvenue sur StoneDigger !\n\nDéveloppez votre réseau, effectuez les actions disponibles et suivez vos parrainages.', register: '🚀 S’inscrire / Commencer', community: '👥 Rejoindre la communauté', stats: '📊 Mes parrainages', share: '🔗 Partager le parrainage', statsText: (n) => `📊 Vos parrainages directs : ${n}`, shareText: (link) => `Invitez vos amis avec votre lien StoneDigger :\n${link}` }
 };
 
 function getLang(ctx) {
@@ -52,6 +32,30 @@ function ensureUser(ctx) {
   return users.get(id);
 }
 
+function serializeUsers() {
+  return [...users.values()].map((u) => ({ id: u.id, referrals: [...u.referrals], referredBy: u.referredBy }));
+}
+
+async function saveUsers() {
+  const file = path.resolve(DATA_FILE);
+  await fs.mkdir(path.dirname(file), { recursive: true });
+  const temp = `${file}.tmp`;
+  await fs.writeFile(temp, JSON.stringify(serializeUsers(), null, 2), 'utf8');
+  await fs.rename(temp, file);
+}
+
+async function loadUsers() {
+  try {
+    const raw = await fs.readFile(path.resolve(DATA_FILE), 'utf8');
+    const saved = JSON.parse(raw);
+    for (const item of Array.isArray(saved) ? saved : []) {
+      users.set(String(item.id), { id: String(item.id), referrals: new Set((item.referrals || []).map(String)), referredBy: item.referredBy ? String(item.referredBy) : null });
+    }
+  } catch (error) {
+    if (error.code !== 'ENOENT') console.error('Could not load referral data:', error);
+  }
+}
+
 function referralLink(ctx) {
   const username = ctx.botInfo?.username;
   return username ? `https://t.me/${username}?start=ref_${ctx.from.id}` : `ref_${ctx.from.id}`;
@@ -63,14 +67,13 @@ bot.start(async (ctx) => {
   if (payload.startsWith('ref_')) {
     const referrerId = payload.slice(4);
     if (referrerId && referrerId !== user.id && !user.referredBy) {
-      const referrer = users.get(referrerId);
-      if (referrer) {
-        user.referredBy = referrerId;
-        referrer.referrals.add(user.id);
-      }
+      const referrer = users.get(referrerId) || { id: referrerId, referrals: new Set(), referredBy: null };
+      users.set(referrerId, referrer);
+      user.referredBy = referrerId;
+      referrer.referrals.add(user.id);
+      await saveUsers();
     }
   }
-
   const t = text[getLang(ctx)];
   await ctx.reply(t.welcome, Markup.inlineKeyboard([
     [Markup.button.url(t.register, OXSHARE_URL)],
@@ -94,7 +97,20 @@ bot.action('share', async (ctx) => {
 
 bot.catch((err) => console.error('StoneDigger bot error:', err));
 
-bot.launch().then(() => console.log('StoneDigger bot started'));
+const server = http.createServer((req, res) => {
+  if (req.url === '/' || req.url === '/health') {
+    res.writeHead(200, { 'content-type': 'application/json; charset=utf-8' });
+    res.end(JSON.stringify({ ok: true, service: 'stonedigger' }));
+    return;
+  }
+  res.writeHead(404, { 'content-type': 'application/json; charset=utf-8' });
+  res.end(JSON.stringify({ ok: false, error: 'not_found' }));
+});
 
-process.once('SIGINT', () => bot.stop('SIGINT'));
-process.once('SIGTERM', () => bot.stop('SIGTERM'));
+await loadUsers();
+server.listen(PORT, '0.0.0.0', () => console.log(`StoneDigger health server listening on ${PORT}`));
+await bot.launch();
+console.log('StoneDigger bot started');
+
+process.once('SIGINT', () => { server.close(); bot.stop('SIGINT'); });
+process.once('SIGTERM', () => { server.close(); bot.stop('SIGTERM'); });
