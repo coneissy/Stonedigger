@@ -6,7 +6,7 @@ if (!token) throw new Error("BOT_TOKEN is required");
 
 const bot = new Telegraf(token);
 const port = Number(process.env.PORT || 10000);
-const PREMIUM_STARS = 50;
+const PREMIUM_STARS = 1;
 
 bot.start((ctx) => ctx.reply("⛏️ Welcome to StoneDigger!\n\nUse /help to see what you can do."));
 
@@ -14,17 +14,17 @@ bot.help((ctx) => ctx.reply("⛏️ StoneDigger\n\n/start — Start\n/help — H
 
 bot.command("premium", async (ctx) => {
   await ctx.replyWithInvoice({
-    title: "StoneDigger Premium",
-    description: "Unlock StoneDigger Premium features.",
-    payload: "stonedigger-premium-v1",
+    title: "StoneDigger Premium — Test",
+    description: "Test StoneDigger Premium with 1 Telegram Star.",
+    payload: "stonedigger-premium-test-v1",
     currency: "XTR",
-    prices: [{ label: "Premium", amount: PREMIUM_STARS }]
+    prices: [{ label: "Premium Test", amount: PREMIUM_STARS }]
   });
 });
 
 bot.on("pre_checkout_query", async (ctx) => {
   const query = ctx.update.pre_checkout_query;
-  if (query.invoice_payload !== "stonedigger-premium-v1" || query.currency !== "XTR" || query.total_amount !== PREMIUM_STARS) {
+  if (query.invoice_payload !== "stonedigger-premium-test-v1" || query.currency !== "XTR" || query.total_amount !== PREMIUM_STARS) {
     await ctx.answerPreCheckoutQuery(false, "This Premium order is no longer valid.");
     return;
   }
@@ -33,8 +33,8 @@ bot.on("pre_checkout_query", async (ctx) => {
 
 bot.on("successful_payment", async (ctx) => {
   const payment = ctx.message.successful_payment;
-  if (payment.invoice_payload !== "stonedigger-premium-v1") return;
-  await ctx.reply("✅ Payment received!\n⭐ StoneDigger Premium is unlocked for you.\n\nThank you for supporting StoneDigger!");
+  if (payment.invoice_payload !== "stonedigger-premium-test-v1") return;
+  await ctx.reply("✅ Payment received!\n⭐ 1 Star confirmed.\n🚀 StoneDigger Premium test is active.\n\nThank you for supporting StoneDigger!");
   console.log(`Premium payment: user=${ctx.from.id} stars=${payment.total_amount} charge=${payment.telegram_payment_charge_id}`);
 });
 
