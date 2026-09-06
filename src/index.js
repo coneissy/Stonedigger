@@ -1,4 +1,4 @@
-import { Telegraf } from "telegraf";
+import { Telegraf, Markup } from "telegraf";
 import http from "node:http";
 
 const token = process.env.BOT_TOKEN;
@@ -22,6 +22,15 @@ async function syncUser(ctx) {
   return dbRequest({ action: "upsert_user", telegram_user_id: ctx.from.id, first_name: ctx.from.first_name || "", username: ctx.from.username || "" });
 }
 function displayName(user) { return user.username ? `@${user.username}` : (user.first_name || "Player"); }
+function affiliateKeyboard() {
+  return Markup.inlineKeyboard([[Markup.button.url("💰 Visit OxShare", OXSHARE_AFFILIATE_URL)]]);
+}
+async function showAffiliate(ctx, intro = false) {
+  const text = intro
+    ? "💰 Looking for an additional opportunity?\n\nStoneDigger has a separate OxShare affiliate link. If you want to learn more, you can visit OxShare below.\n\n⚠️ This is a third-party affiliate link. Trading involves risk and commissions depend on OxShare's terms and qualifying activity."
+    : "💰 Want to explore OxShare?\n\nVisit through our affiliate link to learn more.\n\n⚠️ Third-party affiliate link. Trading involves risk; no earnings are guaranteed. If you sign up, review OxShare's terms and risks first.";
+  return ctx.reply(text, affiliateKeyboard());
+}
 
 bot.start(async (ctx) => {
   await syncUser(ctx);
@@ -31,16 +40,17 @@ bot.start(async (ctx) => {
     const result = await dbRequest({ action: "apply_referral", telegram_user_id: ctx.from.id, first_name: ctx.from.first_name || "", username: ctx.from.username || "", referral_code: code });
     if (result.result?.applied) return ctx.reply("⛏️ Welcome to StoneDigger!\n\n✅ Referral linked successfully.\nUse /dig to start your daily activity.");
   }
-  return ctx.reply("⛏️ Welcome to StoneDigger!\n\nI’m your StoneDigger assistant. You can chat with me anytime.\n\nTry /dig to start, /status to check your progress, or /help to see everything.");
+  return ctx.reply("⛏️ Welcome to StoneDigger!\n\nUse /help to see what you can do.", affiliateKeyboard());
 });
 
-bot.help((ctx) => ctx.reply("⛏️ StoneDigger\n\n/start — Start\n/dig — Daily dig\n/referral — Your StoneDigger referral link\n/affiliate — OxShare affiliate link\n/community — Community link\n/leaderboard — Activity leaderboard\n/status — Account status\n/premium — Premium (100 ⭐)\n/terms — Terms\n/paysupport — Payment support\n\n💬 You can also simply chat with me: say hello, ask about digging, Premium, referrals, or your progress."));
+bot.help((ctx) => ctx.reply("⛏️ StoneDigger\n\n/start — Start\n/dig — Daily dig\n/referral — Your StoneDigger referral link\n/affiliate — OxShare affiliate link\n/community — Community link\n/leaderboard — Activity leaderboard\n/status — Account status\n/premium — Premium (100 ⭐)\n/terms — Terms\n/paysupport — Payment support"));
 
 bot.command("dig", async (ctx) => {
   const result = await dbRequest({ action: "record_dig", telegram_user_id: ctx.from.id, first_name: ctx.from.first_name || "", username: ctx.from.username || "" });
   const dig = result.dig;
   if (!dig?.did_dig) return ctx.reply(`⛏️ You already dug today.\n📊 Activity: ${dig?.dig_count ?? 0}\n🔥 Streak: ${dig?.streak_count ?? 0}`);
   const bonus = dig.premium ? "\n⭐ Premium bonus: +2 activity points." : "";
+  if (dig.dig_count % 3 === 0) return ctx.reply(`⛏️ Dig complete!\n📊 Activity: ${dig.dig_count}\n🔥 Streak: ${dig.streak_count} day${dig.streak_count === 1 ? "" : "s"}.${bonus}\n\nCome back tomorrow to keep your streak.\n\n💰 Curious about OxShare? You can learn more here.\n⚠️ Third-party affiliate link; trading involves risk.`, affiliateKeyboard());
   return ctx.reply(`⛏️ Dig complete!\n📊 Activity: ${dig.dig_count}\n🔥 Streak: ${dig.streak_count} day${dig.streak_count === 1 ? "" : "s"}.${bonus}\n\nCome back tomorrow to keep your streak.`);
 });
 
@@ -48,10 +58,10 @@ bot.command("referral", async (ctx) => {
   const result = await dbRequest({ action: "get_referral", telegram_user_id: ctx.from.id, first_name: ctx.from.first_name || "", username: ctx.from.username || "" });
   const me = await bot.telegram.getMe();
   const link = `https://t.me/${me.username}?start=ref_${result.referral_code}`;
-  return ctx.reply(`🔗 Your StoneDigger referral link:\n${link}\n\nShare it with friends to grow your referral count.`);
+  return ctx.reply(`🔗 Your StoneDigger referral link:\n${link}\n\nShare it with friends to grow your referral count.\n\n💰 You can also explore our separate OxShare affiliate opportunity below.`, affiliateKeyboard());
 });
 
-bot.command("affiliate", (ctx) => ctx.reply(`💰 OxShare Affiliate\n\nUse this link to visit OxShare through my referral:\n${OXSHARE_AFFILIATE_URL}\n\n⚠️ This is a third-party affiliate/referral link. Any commissions depend on OxShare's own partner terms and qualifying activity.`));
+bot.command("affiliate", (ctx) => showAffiliate(ctx));
 
 bot.command("community", (ctx) => ctx.reply(`👥 StoneDigger Community\n\nJoin the community here:\n${COMMUNITY_URL}`));
 
@@ -66,10 +76,10 @@ bot.command("leaderboard", async (ctx) => {
 bot.command("status", async (ctx) => {
   const result = await dbRequest({ action: "get_user", telegram_user_id: ctx.from.id });
   const user = result.user;
-  if (!user) { await syncUser(ctx); return ctx.reply("⛏️ Free account. Use /premium to unlock Premium for 100 ⭐."); }
+  if (!user) { await syncUser(ctx); return ctx.reply("⛏️ Free account. Use /premium to unlock Premium for 100 ⭐.", affiliateKeyboard()); }
   const premium = user.premium ? "⭐ Premium active" : "⛏️ Free account";
   const feature = user.premium ? "Premium dig bonus: +2 activity points per daily dig." : "Premium adds +2 activity points per daily dig.";
-  return ctx.reply(`${premium}\n\n📊 Activity: ${user.dig_count || 0}\n🔥 Streak: ${user.streak_count || 0}\n👥 Referrals: ${user.referral_count || 0}\n\n${feature}`);
+  return ctx.reply(`${premium}\n\n📊 Activity: ${user.dig_count || 0}\n🔥 Streak: ${user.streak_count || 0}\n👥 Referrals: ${user.referral_count || 0}\n\n${feature}\n\n💰 Want to explore OxShare? Use /affiliate.`, affiliateKeyboard());
 });
 
 bot.command("premium", async (ctx) => {
@@ -89,22 +99,6 @@ bot.on("successful_payment", async (ctx) => {
   const result = await dbRequest({ action: "record_payment", telegram_user_id: ctx.from.id, first_name: ctx.from.first_name || "", username: ctx.from.username || "", charge_id: payment.telegram_payment_charge_id, stars: payment.total_amount, currency: payment.currency, payload: payment.invoice_payload });
   if (result.duplicate) return ctx.reply("ℹ️ This payment was already recorded.\n⭐ Premium remains active on your account.");
   return ctx.reply("✅ Payment received!\n⭐ 100 Stars confirmed.\n🚀 StoneDigger Premium is unlocked.\n\nThank you for supporting StoneDigger!");
-});
-
-// Lightweight automated conversation layer: users can talk naturally without needing a command.
-bot.on("text", async (ctx) => {
-  const text = (ctx.message.text || "").trim();
-  if (!text || text.startsWith("/")) return;
-  await syncUser(ctx);
-  const lower = text.toLowerCase();
-  if (/\b(hi|hello|hey|yo|hola|مرحبا|سلام)\b/.test(lower)) return ctx.reply(`👋 Hey ${ctx.from.first_name || "there"}! Ready to dig?\n\n⛏️ /dig — today's activity\n📊 /status — your progress\n🔗 /referral — invite friends\n⭐ /premium — Premium for 100 Stars`);
-  if (/\b(help|what can you do|commands|how does this work)\b/.test(lower)) return ctx.reply("⛏️ I can help you with StoneDigger.\n\nTry /dig, /status, /referral, /leaderboard, or /premium.\n\nYou can also ask me about Premium, referrals, streaks, or digging in normal words.");
-  if (/\b(dig|mine|mining|activity|streak|daily)\b/.test(lower)) return ctx.reply("⛏️ Your daily dig is the core activity. Use /dig once per day to build your streak and activity. Premium users receive +2 activity points per daily dig.");
-  if (/\b(premium|stars|price|cost|paid)\b/.test(lower)) return ctx.reply("⭐ StoneDigger Premium costs 100 Telegram Stars. Use /premium to open the secure Telegram payment screen. Premium gives +2 activity points per daily dig.");
-  if (/\b(referral|refer|invite|friend|link)\b/.test(lower)) return ctx.reply("🔗 Want your personal invite link? Use /referral. StoneDigger tracks one referral attribution per user and blocks self-referrals.");
-  if (/\b(leaderboard|ranking|rank|top)\b/.test(lower)) return ctx.reply("🏆 See the current activity rankings with /leaderboard. Keep your daily streak going to build activity.");
-  if (/\b(status|progress|stats|score)\b/.test(lower)) return ctx.reply("📊 Check your Premium status, activity, streak, and referrals with /status.");
-  return ctx.reply("⛏️ I’m here to help with StoneDigger. Try asking about **digging**, **Premium**, **referrals**, **streaks**, or **leaderboard** — or use /help.");
 });
 
 bot.command("terms", (ctx) => ctx.reply("📜 StoneDigger Terms\n\nStoneDigger is an activity and referral bot. Activity points and leaderboard positions are not cash and do not guarantee earnings. Premium is a paid digital feature for 100 Telegram Stars. Affiliate links are third-party links and any commissions depend on the affiliate program's terms. Use the bot responsibly and do not spam referrals."));
