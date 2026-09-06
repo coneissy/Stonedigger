@@ -8,6 +8,8 @@ const port = Number(process.env.PORT || 10000);
 const PREMIUM_STARS = 100;
 const DB_URL = process.env.STONEDIGGER_DB_URL;
 const DB_SECRET = process.env.STONEDIGGER_DB_SECRET;
+const OXSHARE_AFFILIATE_URL = "https://my.oxshare.com/register?referral=019ba1ff-6ca2-70b3-9def-036b59457426";
+const COMMUNITY_URL = "https://t.me/ImperialEliteGoldskull";
 if (!DB_URL || !DB_SECRET) throw new Error("STONEDIGGER_DB_URL and STONEDIGGER_DB_SECRET are required");
 
 async function dbRequest(body) {
@@ -32,7 +34,7 @@ bot.start(async (ctx) => {
   return ctx.reply("⛏️ Welcome to StoneDigger!\n\nUse /help to see what you can do.");
 });
 
-bot.help((ctx) => ctx.reply("⛏️ StoneDigger\n\n/start — Start\n/dig — Daily dig\n/referral — Your referral link\n/leaderboard — Activity leaderboard\n/status — Account status\n/premium — Premium (100 ⭐)\n/terms — Terms\n/paysupport — Payment support"));
+bot.help((ctx) => ctx.reply("⛏️ StoneDigger\n\n/start — Start\n/dig — Daily dig\n/referral — Your StoneDigger referral link\n/affiliate — OxShare affiliate link\n/community — Community link\n/leaderboard — Activity leaderboard\n/status — Account status\n/premium — Premium (100 ⭐)\n/terms — Terms\n/paysupport — Payment support"));
 
 bot.command("dig", async (ctx) => {
   const result = await dbRequest({ action: "record_dig", telegram_user_id: ctx.from.id, first_name: ctx.from.first_name || "", username: ctx.from.username || "" });
@@ -48,6 +50,10 @@ bot.command("referral", async (ctx) => {
   const link = `https://t.me/${me.username}?start=ref_${result.referral_code}`;
   return ctx.reply(`🔗 Your StoneDigger referral link:\n${link}\n\nShare it with friends to grow your referral count.`);
 });
+
+bot.command("affiliate", (ctx) => ctx.reply(`💰 OxShare Affiliate\n\nUse this link to visit OxShare through my referral:\n${OXSHARE_AFFILIATE_URL}\n\n⚠️ This is a third-party affiliate/referral link. Any commissions depend on OxShare's own partner terms and qualifying activity.`));
+
+bot.command("community", (ctx) => ctx.reply(`👥 StoneDigger Community\n\nJoin the community here:\n${COMMUNITY_URL}`));
 
 bot.command("leaderboard", async (ctx) => {
   const result = await dbRequest({ action: "leaderboard" });
@@ -85,7 +91,7 @@ bot.on("successful_payment", async (ctx) => {
   return ctx.reply("✅ Payment received!\n⭐ 100 Stars confirmed.\n🚀 StoneDigger Premium is unlocked.\n\nThank you for supporting StoneDigger!");
 });
 
-bot.command("terms", (ctx) => ctx.reply("📜 StoneDigger Terms\n\nStoneDigger is an activity and referral bot. Activity points and leaderboard positions are not cash and do not guarantee earnings. Premium is a paid digital feature for 100 Telegram Stars. Use the bot responsibly and do not spam referrals."));
+bot.command("terms", (ctx) => ctx.reply("📜 StoneDigger Terms\n\nStoneDigger is an activity and referral bot. Activity points and leaderboard positions are not cash and do not guarantee earnings. Premium is a paid digital feature for 100 Telegram Stars. Affiliate links are third-party links and any commissions depend on the affiliate program's terms. Use the bot responsibly and do not spam referrals."));
 bot.command("paysupport", (ctx) => ctx.reply("For payment support, contact the bot owner."));
 
 const server = http.createServer((req, res) => {
@@ -102,7 +108,7 @@ const server = http.createServer((req, res) => {
 server.listen(port, async () => {
   console.log(`HTTP server listening on ${port}`);
   await bot.telegram.setMyCommands([
-    { command: "start", description: "Start StoneDigger" }, { command: "help", description: "Show help" }, { command: "dig", description: "Daily dig" }, { command: "referral", description: "Get referral link" }, { command: "leaderboard", description: "Activity leaderboard" }, { command: "status", description: "Account status" }, { command: "premium", description: "Premium — 100 Stars" }, { command: "terms", description: "Terms" }, { command: "paysupport", description: "Payment support" }
+    { command: "start", description: "Start StoneDigger" }, { command: "help", description: "Show help" }, { command: "dig", description: "Daily dig" }, { command: "referral", description: "StoneDigger referral link" }, { command: "affiliate", description: "OxShare affiliate link" }, { command: "community", description: "Join the community" }, { command: "leaderboard", description: "Activity leaderboard" }, { command: "status", description: "Account status" }, { command: "premium", description: "Premium — 100 Stars" }, { command: "terms", description: "Terms" }, { command: "paysupport", description: "Payment support" }
   ]);
   const webhookUrl = process.env.WEBHOOK_URL;
   if (webhookUrl) { await bot.telegram.setWebhook(`${webhookUrl.replace(/\/$/, "")}/telegram/webhook`); console.log("Webhook set"); }
