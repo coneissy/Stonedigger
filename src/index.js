@@ -22,13 +22,30 @@ async function syncUser(ctx) {
   return dbRequest({ action: "upsert_user", telegram_user_id: ctx.from.id, first_name: ctx.from.first_name || "", username: ctx.from.username || "" });
 }
 function displayName(user) { return user.username ? `@${user.username}` : (user.first_name || "Player"); }
-function affiliateKeyboard() {
-  return Markup.inlineKeyboard([[Markup.button.url("💰 Visit OxShare", OXSHARE_AFFILIATE_URL)]]);
+function acquisitionKeyboard(referralLink) {
+  return Markup.inlineKeyboard([
+    [Markup.button.url("⛏️ Start Digging", `https://t.me/${referralLink.bot}?start=ref_${referralLink.code}`)],
+    [Markup.button.url("📢 Join Community", COMMUNITY_URL)],
+    [Markup.button.url("💰 Explore OxShare", OXSHARE_AFFILIATE_URL)]
+  ]);
+}
+function affiliateKeyboard() { return Markup.inlineKeyboard([[Markup.button.url("💰 Visit OxShare", OXSHARE_AFFILIATE_URL)]]); }
+async function getReferralLink(ctx) {
+  const result = await dbRequest({ action: "get_referral", telegram_user_id: ctx.from.id, first_name: ctx.from.first_name || "", username: ctx.from.username || "" });
+  const me = await bot.telegram.getMe();
+  return { bot: me.username, code: result.referral_code, url: `https://t.me/${me.username}?start=ref_${result.referral_code}` };
+}
+async function referralShareKeyboard(ctx) {
+  const ref = await getReferralLink(ctx);
+  const shareText = encodeURIComponent("⛏️ Join me on StoneDigger! Start your daily dig and build your activity streak. Try it here:");
+  const shareUrl = `https://t.me/share/url?url=${encodeURIComponent(ref.url)}&text=${shareText}`;
+  return Markup.inlineKeyboard([
+    [Markup.button.url("📤 Invite Friends", shareUrl)],
+    [Markup.button.url("👥 Community", COMMUNITY_URL)]
+  ]);
 }
 async function showAffiliate(ctx, intro = false) {
-  const text = intro
-    ? "💰 Looking for an additional opportunity?\n\nStoneDigger has a separate OxShare affiliate link. If you want to learn more, you can visit OxShare below.\n\n⚠️ This is a third-party affiliate link. Trading involves risk and commissions depend on OxShare's terms and qualifying activity."
-    : "💰 Want to explore OxShare?\n\nVisit through our affiliate link to learn more.\n\n⚠️ Third-party affiliate link. Trading involves risk; no earnings are guaranteed. If you sign up, review OxShare's terms and risks first.";
+  const text = intro ? "💰 Looking for an additional opportunity?\n\nStoneDigger has a separate OxShare affiliate link. If you want to learn more, you can visit OxShare below.\n\n⚠️ This is a third-party affiliate link. Trading involves risk and commissions depend on OxShare's terms and qualifying activity." : "💰 Want to explore OxShare?\n\nVisit through our affiliate link to learn more.\n\n⚠️ Third-party affiliate link. Trading involves risk; no earnings are guaranteed. If you sign up, review OxShare's terms and risks first.";
   return ctx.reply(text, affiliateKeyboard());
 }
 
@@ -38,27 +55,30 @@ bot.start(async (ctx) => {
   if (payload.startsWith("ref_")) {
     const code = payload.slice(4);
     const result = await dbRequest({ action: "apply_referral", telegram_user_id: ctx.from.id, first_name: ctx.from.first_name || "", username: ctx.from.username || "", referral_code: code });
-    if (result.result?.applied) return ctx.reply("⛏️ Welcome to StoneDigger!\n\n✅ Referral linked successfully.\nUse /dig to start your daily activity.");
+    if (result.result?.applied) {
+      return ctx.reply("⛏️ Welcome to StoneDigger!\n\n✅ Referral linked successfully.\n\n🎯 Your first step: use /dig to start your daily activity.\n\n📤 Invite friends after your first dig to grow your referral count.", await referralShareKeyboard(ctx));
+    }
   }
-  return ctx.reply("⛏️ Welcome to StoneDigger!\n\nUse /help to see what you can do.", affiliateKeyboard());
+  return ctx.reply("⛏️ Welcome to StoneDigger!\n\n🎯 Start with /dig and build your daily streak.\n📤 Invite friends to grow your referral count.\n🏆 Check /leaderboard to see the competition.", await referralShareKeyboard(ctx));
 });
 
-bot.help((ctx) => ctx.reply("⛏️ StoneDigger\n\n/start — Start\n/dig — Daily dig\n/referral — Your StoneDigger referral link\n/affiliate — OxShare affiliate link\n/community — Community link\n/leaderboard — Activity leaderboard\n/status — Account status\n/premium — Premium (1 ⭐ TEST)\n/terms — Terms\n/paysupport — Payment support"));
+bot.help((ctx) => ctx.reply("⛏️ StoneDigger\n\n/start — Start\n/dig — Daily dig\n/referral — Your referral link\n/affiliate — OxShare affiliate link\n/community — Join the community\n/leaderboard — Activity leaderboard\n/status — Account status\n/premium — Premium (1 ⭐ TEST)\n/terms — Terms\n/paysupport — Payment support"));
 
 bot.command("dig", async (ctx) => {
   const result = await dbRequest({ action: "record_dig", telegram_user_id: ctx.from.id, first_name: ctx.from.first_name || "", username: ctx.from.username || "" });
   const dig = result.dig;
-  if (!dig?.did_dig) return ctx.reply(`⛏️ You already dug today.\n📊 Activity: ${dig?.dig_count ?? 0}\n🔥 Streak: ${dig?.streak_count ?? 0}`);
+  if (!dig?.did_dig) return ctx.reply(`⛏️ You already dug today.\n📊 Activity: ${dig?.dig_count ?? 0}\n🔥 Streak: ${dig?.streak_count ?? 0}\n\nCome back tomorrow to keep your streak.`);
   const bonus = dig.premium ? "\n⭐ Premium bonus: +2 activity points." : "";
-  if (dig.dig_count % 3 === 0) return ctx.reply(`⛏️ Dig complete!\n📊 Activity: ${dig.dig_count}\n🔥 Streak: ${dig.streak_count} day${dig.streak_count === 1 ? "" : "s"}.${bonus}\n\nCome back tomorrow to keep your streak.\n\n💰 Curious about OxShare? You can learn more here.\n⚠️ Third-party affiliate link; trading involves risk.`, affiliateKeyboard());
-  return ctx.reply(`⛏️ Dig complete!\n📊 Activity: ${dig.dig_count}\n🔥 Streak: ${dig.streak_count} day${dig.streak_count === 1 ? "" : "s"}.${bonus}\n\nCome back tomorrow to keep your streak.`);
+  const share = await referralShareKeyboard(ctx);
+  if (dig.dig_count % 3 === 0) return ctx.reply(`⛏️ Dig complete!\n📊 Activity: ${dig.dig_count}\n🔥 Streak: ${dig.streak_count} day${dig.streak_count === 1 ? "" : "s"}.${bonus}\n\n🎉 Keep the streak going tomorrow!\n\n📤 Know someone who would enjoy StoneDigger? Invite them below.\n\n💰 Curious about OxShare? Use /affiliate.\n⚠️ Third-party affiliate link; trading involves risk.`, Markup.inlineKeyboard([...(share.reply_markup.inline_keyboard), [Markup.button.url("💰 Explore OxShare", OXSHARE_AFFILIATE_URL)]]));
+  return ctx.reply(`⛏️ Dig complete!\n📊 Activity: ${dig.dig_count}\n🔥 Streak: ${dig.streak_count} day${dig.streak_count === 1 ? "" : "s"}.${bonus}\n\n📤 Invite friends and grow your referral count.`, share);
 });
 
 bot.command("referral", async (ctx) => {
-  const result = await dbRequest({ action: "get_referral", telegram_user_id: ctx.from.id, first_name: ctx.from.first_name || "", username: ctx.from.username || "" });
-  const me = await bot.telegram.getMe();
-  const link = `https://t.me/${me.username}?start=ref_${result.referral_code}`;
-  return ctx.reply(`🔗 Your StoneDigger referral link:\n${link}\n\nShare it with friends to grow your referral count.\n\n💰 You can also explore our separate OxShare affiliate opportunity below.`, affiliateKeyboard());
+  const ref = await getReferralLink(ctx);
+  const shareText = encodeURIComponent("⛏️ Join me on StoneDigger! Start your daily dig and build your activity streak. Try it here:");
+  const shareUrl = `https://t.me/share/url?url=${encodeURIComponent(ref.url)}&text=${shareText}`;
+  return ctx.reply(`🔗 Your StoneDigger referral link:\n${ref.url}\n\n📈 Share it with friends to grow your referral count.\n\n⚠️ Referral activity is tracked by StoneDigger; activity points are not cash and earnings are not guaranteed.`, Markup.inlineKeyboard([[Markup.button.url("📤 Invite Friends", shareUrl)], [Markup.button.url("👥 Join Community", COMMUNITY_URL)]]));
 });
 
 bot.command("affiliate", (ctx) => showAffiliate(ctx));
@@ -69,7 +89,7 @@ bot.command("leaderboard", async (ctx) => {
   const rows = result.leaderboard || [];
   if (!rows.length) return ctx.reply("🏆 Leaderboard is empty. Be the first to dig!");
   const text = rows.map((u, i) => `${i + 1}. ${displayName(u)} — ${u.dig_count || 0} activity • 🔥${u.streak_count || 0} • 👥${u.referral_count || 0}`).join("\n");
-  return ctx.reply(`🏆 StoneDigger Leaderboard\n\n${text}`);
+  return ctx.reply(`🏆 StoneDigger Leaderboard\n\n${text}\n\n📤 Invite friends to grow your referral count.`);
 });
 
 bot.command("status", async (ctx) => {
@@ -78,7 +98,7 @@ bot.command("status", async (ctx) => {
   if (!user) { await syncUser(ctx); return ctx.reply("⛏️ Free account. Use /premium to unlock Premium for 1 ⭐ (test).", affiliateKeyboard()); }
   const premium = user.premium ? "⭐ Premium active" : "⛏️ Free account";
   const feature = user.premium ? "Premium dig bonus: +2 activity points per daily dig." : "Premium adds +2 activity points per daily dig.";
-  return ctx.reply(`${premium}\n\n📊 Activity: ${user.dig_count || 0}\n🔥 Streak: ${user.streak_count || 0}\n👥 Referrals: ${user.referral_count || 0}\n\n${feature}\n\n💰 Want to explore OxShare? Use /affiliate.`, affiliateKeyboard());
+  return ctx.reply(`${premium}\n\n📊 Activity: ${user.dig_count || 0}\n🔥 Streak: ${user.streak_count || 0}\n👥 Referrals: ${user.referral_count || 0}\n\n${feature}\n\n📤 Use /referral to invite friends.\n💰 Want to explore OxShare? Use /affiliate.`, affiliateKeyboard());
 });
 
 bot.command("premium", async (ctx) => {
@@ -117,7 +137,7 @@ const server = http.createServer((req, res) => {
 server.listen(port, async () => {
   console.log(`HTTP server listening on ${port}`);
   await bot.telegram.setMyCommands([
-    { command: "start", description: "Start StoneDigger" }, { command: "help", description: "Show help" }, { command: "dig", description: "Daily dig" }, { command: "referral", description: "StoneDigger referral link" }, { command: "affiliate", description: "OxShare affiliate link" }, { command: "community", description: "Join the community" }, { command: "leaderboard", description: "Activity leaderboard" }, { command: "status", description: "Account status" }, { command: "premium", description: "Premium — 1 Star TEST" }, { command: "terms", description: "Terms" }, { command: "paysupport", description: "Payment support" }
+    { command: "start", description: "Start StoneDigger" }, { command: "help", description: "Show help" }, { command: "dig", description: "Daily dig" }, { command: "referral", description: "Invite friends" }, { command: "affiliate", description: "OxShare affiliate link" }, { command: "community", description: "Join the community" }, { command: "leaderboard", description: "Activity leaderboard" }, { command: "status", description: "Account status" }, { command: "premium", description: "Premium — 1 Star TEST" }, { command: "terms", description: "Terms" }, { command: "paysupport", description: "Payment support" }
   ]);
   const webhookUrl = process.env.WEBHOOK_URL;
   if (webhookUrl) { await bot.telegram.setWebhook(`${webhookUrl.replace(/\/$/, "")}/telegram/webhook`); console.log("Webhook set"); }
