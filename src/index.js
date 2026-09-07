@@ -1,4 +1,5 @@
 import { Telegraf, Markup } from "telegraf";
+import crypto from "node:crypto";
 import http from "node:http";
 
 const token = process.env.BOT_TOKEN;
@@ -11,6 +12,10 @@ const DB_SECRET = process.env.STONEDIGGER_DB_SECRET;
 const OXSHARE_AFFILIATE_URL = "https://my.oxshare.com/register?referral=019ba1ff-6ca2-70b3-9def-036b59457426";
 const FXPRO_AFFILIATE_URL = "https://direct-fxpro.com/en/partner/2vZ2oa192?platform=web";
 const COMMUNITY_URL = "https://t.me/ImperialEliteGoldskull";
+const FACEBOOK_VERIFY_TOKEN = process.env.FACEBOOK_VERIFY_TOKEN || "";
+const FACEBOOK_PAGE_ACCESS_TOKEN = process.env.FACEBOOK_PAGE_ACCESS_TOKEN || "";
+const FACEBOOK_APP_SECRET = process.env.FACEBOOK_APP_SECRET || "";
+const FACEBOOK_GRAPH_VERSION = process.env.FACEBOOK_GRAPH_VERSION || "v25.0";
 if (!DB_URL || !DB_SECRET) throw new Error("STONEDIGGER_DB_URL and STONEDIGGER_DB_SECRET are required");
 
 async function dbRequest(body) {
@@ -178,8 +183,87 @@ bot.on("successful_payment", async (ctx) => {
 bot.command("terms", (ctx) => ctx.reply("📜 StoneDigger Terms\n\nStoneDigger is an activity and referral bot. Activity points and leaderboard positions are not cash and do not guarantee earnings. Premium is a paid digital feature for 100 Telegram Stars. Affiliate links are third-party links and commissions depend on the affiliate program's terms. FxPro is a separate partner offer; availability depends on jurisdiction and CFDs carry a high risk of losing money. Use the bot responsibly and do not spam referrals."));
 bot.command("paysupport", (ctx) => ctx.reply("For payment support, contact the bot owner."));
 
+async function facebookDb(action, body) { return dbRequest({ action, ...body }); }
+async function sendFacebookMessage(recipientId, message) {
+  if (!FACEBOOK_PAGE_ACCESS_TOKEN) throw new Error("FACEBOOK_PAGE_ACCESS_TOKEN is not configured");
+  const response = await fetch(`https://graph.facebook.com/${FACEBOOK_GRAPH_VERSION}/me/messages?access_token=${encodeURIComponent(FACEBOOK_PAGE_ACCESS_TOKEN)}`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ recipient: { id: recipientId }, message }) });
+  const result = await response.json();
+  if (!response.ok || result.error) throw new Error(result.error?.message || `Facebook send failed (${response.status})`);
+  return result;
+}
+function fbButton(title, url) { return { type: "web_url", title, url, webview_height_ratio: "full" }; }
+function fbButtons(buttons) { return { attachment: { type: "template", payload: { template_type: "button", text: "Choose an option:", buttons } } }; }
+async function handleFacebookText(senderId, text) {
+  const lower = String(text || "").trim().toLowerCase();
+  const existing = await facebookDb("facebook_get", { facebook_user_id: senderId });
+  const firstName = existing.user?.first_name || "Digger";
+  if (["hi","hello","start","/start","menu","help","/help"].includes(lower)) {
+    await facebookDb("facebook_upsert", { facebook_user_id: senderId, first_name: firstName });
+    return sendFacebookMessage(senderId, { text: `⛏️ WELCOME TO STONEDIGGER, ${firstName}!\n\nDig daily, build your streak and climb the leaderboard.`, quick_replies: [
+      { content_type: "text", title: "⛏️ DIG NOW", payload: "DIG" },
+      { content_type: "text", title: "🏆 LEADERBOARD", payload: "LEADERBOARD" },
+      { content_type: "text", title: "💰 OXSHARE", payload: "OXSHARE" }
+    ] });
+  }
+  if (["dig","/dig","⛏️ dig now"].includes(lower)) {
+    const result = await facebookDb("facebook_dig", { facebook_user_id: senderId, first_name: firstName });
+    const dig = result.dig || {};
+    if (!dig.did_dig) return sendFacebookMessage(senderId, { text: `⏳ YOU ALREADY DUG TODAY!\n\n📊 Activity: ${dig.dig_count || 0}\n🔥 Streak: ${dig.streak_count || 0}\n\nCome back tomorrow.` });
+    const ox = dig.dig_count % 3 === 0 ? "\n\n💰 Explore the separate OxShare opportunity below.\n⚠️ Third-party affiliate link; no earnings are guaranteed." : "";
+    return sendFacebookMessage(senderId, { text: `⛏️ DIG COMPLETE!\n\n📊 Activity: ${dig.dig_count || 0}\n🔥 Streak: ${dig.streak_count || 0}${dig.premium ? "\n⭐ Premium bonus active." : ""}${ox}`, quick_replies: [
+      { content_type: "text", title: "⛏️ DIG", payload: "DIG" },
+      { content_type: "text", title: "🏆 RANK", payload: "LEADERBOARD" },
+      { content_type: "text", title: "💰 OXSHARE", payload: "OXSHARE" }
+    ] });
+  }
+  if (["leaderboard","/leaderboard","rank","/rank"].includes(lower)) {
+    const result = await facebookDb("facebook_leaderboard", {});
+    const rows = result.leaderboard || [];
+    const text = rows.length ? rows.map((u, i) => `${i + 1}. ${u.first_name || "Player"} — ⛏️${u.dig_count || 0} • 🔥${u.streak_count || 0}`).join("\n") : "No players yet. Be the first to dig!";
+    return sendFacebookMessage(senderId, { text: `🏆 TOP DIGGERS\n\n${text}` });
+  }
+  if (["oxshare","/affiliate","affiliate","money","opportunity"].includes(lower)) {
+    return sendFacebookMessage(senderId, { text: "💰 OXSHARE OPPORTUNITY\n\nThis is separate from StoneDigger. Review the service, terms and risks before signing up. No earnings are guaranteed.\n\n⚠️ StoneDigger may receive affiliate compensation if you register through this referral link.", ...fbButtons([fbButton("💰 VISIT OXSHARE", OXSHARE_AFFILIATE_URL)]) });
+  }
+  if (["community","/community"].includes(lower)) return sendFacebookMessage(senderId, { text: "👥 Join the StoneDigger community:", ...fbButtons([fbButton("👥 JOIN COMMUNITY", COMMUNITY_URL)]) });
+  return sendFacebookMessage(senderId, { text: "⛏️ I can help you DIG, show the LEADERBOARD, or show the OXSHARE opportunity. Type DIG to start.", quick_replies: [
+    { content_type: "text", title: "⛏️ DIG", payload: "DIG" },
+    { content_type: "text", title: "🏆 RANK", payload: "LEADERBOARD" },
+    { content_type: "text", title: "💰 OXSHARE", payload: "OXSHARE" }
+  ] });
+}
+function verifyFacebookSignature(rawBody, signature) {
+  if (!FACEBOOK_APP_SECRET) return true;
+  const expected = "sha256=" + crypto.createHmac("sha256", FACEBOOK_APP_SECRET).update(rawBody).digest("hex");
+  try { return crypto.timingSafeEqual(Buffer.from(expected), Buffer.from(signature || "")); } catch { return false; }
+}
+async function handleFacebookWebhook(req, res) {
+  if (req.method === "GET") {
+    const url = new URL(req.url || "/", "http://localhost");
+    if (url.searchParams.get("hub.mode") === "subscribe" && url.searchParams.get("hub.verify_token") === FACEBOOK_VERIFY_TOKEN && FACEBOOK_VERIFY_TOKEN) { res.writeHead(200, { "content-type": "text/plain" }); res.end(url.searchParams.get("hub.challenge")); return; }
+    res.writeHead(403); res.end("Forbidden"); return;
+  }
+  if (req.method !== "POST") { res.writeHead(405); res.end("Method Not Allowed"); return; }
+  let rawBody = "";
+  req.on("data", chunk => rawBody += chunk);
+  req.on("end", async () => {
+    try {
+      if (!verifyFacebookSignature(rawBody, req.headers["x-hub-signature-256"])) { res.writeHead(403); res.end("Invalid signature"); return; }
+      const body = JSON.parse(rawBody);
+      if (body.object !== "page") { res.writeHead(404); res.end("Not found"); return; }
+      for (const entry of body.entry || []) for (const event of entry.messaging || []) {
+        if (!event.sender?.id || event.sender.id === event.recipient?.id) continue;
+        if (event.message?.quick_reply?.payload) await handleFacebookText(event.sender.id, event.message.quick_reply.payload);
+        else if (event.message?.text) await handleFacebookText(event.sender.id, event.message.text);
+      }
+      res.writeHead(200); res.end("EVENT_RECEIVED");
+    } catch (error) { console.error("Facebook webhook error:", error); res.writeHead(500); res.end("ERROR"); }
+  });
+}
+
 const server = http.createServer((req, res) => {
   if (req.method === "GET" && req.url === "/") { res.writeHead(200, { "content-type": "text/plain" }); res.end("StoneDigger is running"); return; }
+  if (req.url === "/facebook/webhook") return handleFacebookWebhook(req, res);
   if (req.method === "POST" && req.url === "/telegram/webhook") {
     let body = "";
     req.on("data", (chunk) => (body += chunk));
@@ -206,6 +290,7 @@ server.listen(port, async () => {
     { command: "paysupport", description: "Payment support" }
   ]);
   const webhookUrl = process.env.WEBHOOK_URL;
-  if (webhookUrl) { await bot.telegram.setWebhook(`${webhookUrl.replace(/\/$/, "")}/telegram/webhook`); console.log("Webhook set"); }
-  else console.log("WEBHOOK_URL not set yet");
+  if (webhookUrl) { await bot.telegram.setWebhook(`${webhookUrl.replace(/\/$/, "")}/telegram/webhook`); console.log("Telegram webhook set"); }
+  if (FACEBOOK_VERIFY_TOKEN && FACEBOOK_PAGE_ACCESS_TOKEN) console.log("Facebook Messenger integration configured");
+  else console.log("Facebook Messenger integration awaiting Meta credentials");
 });
