@@ -9,6 +9,7 @@ const PREMIUM_STARS = 1;
 const DB_URL = process.env.STONEDIGGER_DB_URL;
 const DB_SECRET = process.env.STONEDIGGER_DB_SECRET;
 const OXSHARE_AFFILIATE_URL = "https://my.oxshare.com/register?referral=019ba1ff-6ca2-70b3-9def-036b59457426";
+const FXPRO_AFFILIATE_URL = "https://direct-fxpro.com/en/partner/2vZ2oa192?platform=web";
 const COMMUNITY_URL = "https://t.me/ImperialEliteGoldskull";
 if (!DB_URL || !DB_SECRET) throw new Error("STONEDIGGER_DB_URL and STONEDIGGER_DB_SECRET are required");
 
@@ -26,7 +27,8 @@ function mainKeyboard() {
     [Markup.button.callback("⛏️ DIG NOW", "dig_now")],
     [Markup.button.callback("📤 INVITE FRIENDS", "invite_friends")],
     [Markup.button.callback("⭐ PREMIUM", "premium_info")],
-    [Markup.button.callback("🏆 LEADERBOARD", "leaderboard_now")]
+    [Markup.button.callback("🏆 LEADERBOARD", "leaderboard_now")],
+    [Markup.button.callback("💼 FXPRO", "fxpro_info")]
   ]);
 }
 function postDigKeyboard() {
@@ -34,6 +36,7 @@ function postDigKeyboard() {
     [Markup.button.callback("📤 INVITE FRIENDS", "invite_friends")],
     [Markup.button.callback("🏆 LEADERBOARD", "leaderboard_now")],
     [Markup.button.callback("⭐ PREMIUM", "premium_info")],
+    [Markup.button.callback("💼 FXPRO", "fxpro_info")],
     [Markup.button.callback("🏠 HOME", "home_now")]
   ]);
 }
@@ -71,6 +74,7 @@ async function showReferral(ctx) {
   return ctx.reply(`👥 INVITE FRIENDS\n\nYour referrals: ${count}\n\nShare your personal invite and bring friends into StoneDigger.\n\n🔗 ${ref.url}\n\n⚠️ Activity points are not cash and earnings are not guaranteed.`, Markup.inlineKeyboard([
     [Markup.button.url("📤 SHARE INVITE", shareUrl)],
     [Markup.button.callback("⛏️ DIG NOW", "dig_now"), Markup.button.callback("🏆 RANK", "leaderboard_now")],
+    [Markup.button.callback("💼 FXPRO", "fxpro_info")],
     [Markup.button.callback("🏠 HOME", "home_now")]
   ]));
 }
@@ -82,6 +86,7 @@ async function showLeaderboard(ctx) {
   const text = rows.slice(0, 10).map((u, i) => `${i + 1}. ${displayName(u)} — ⛏️${u.dig_count || 0} • 🔥${u.streak_count || 0}`).join("\n");
   return ctx.reply(`🏆 TOP DIGGERS\n\n${text}\n\n📤 Invite friends and climb the board.`, Markup.inlineKeyboard([
     [Markup.button.callback("⛏️ DIG NOW", "dig_now"), Markup.button.callback("📤 INVITE", "invite_friends")],
+    [Markup.button.callback("💼 FXPRO", "fxpro_info")],
     [Markup.button.callback("🏠 HOME", "home_now")]
   ]));
 }
@@ -90,6 +95,7 @@ async function showPremium(ctx) {
   return ctx.reply("⭐ STONEDIGGER PREMIUM\n\nGet +2 activity points on every daily dig.\n\n🧪 TEST PRICE: 1 Telegram Star\n\nStart free, then upgrade when you want more activity.", Markup.inlineKeyboard([
     [Markup.button.callback("⭐ BUY PREMIUM — 1 STAR", "buy_premium")],
     [Markup.button.callback("⛏️ DIG NOW", "dig_now")],
+    [Markup.button.callback("💼 FXPRO", "fxpro_info")],
     [Markup.button.callback("🏠 HOME", "home_now")]
   ]));
 }
@@ -102,14 +108,23 @@ async function showStatus(ctx) {
   return ctx.reply(`${premium}\n\n📊 Activity: ${user.dig_count || 0}\n🔥 Streak: ${user.streak_count || 0}\n👥 Referrals: ${user.referral_count || 0}\n\n${user.premium ? "⭐ +2 activity points per daily dig." : "⭐ Premium adds +2 activity points per daily dig."}`, Markup.inlineKeyboard([
     [Markup.button.callback("⛏️ DIG NOW", "dig_now")],
     ...(user.premium ? [] : [[Markup.button.callback("⭐ GET PREMIUM", "premium_info")]]),
-    [Markup.button.callback("📤 INVITE", "invite_friends"), Markup.button.callback("🏠 HOME", "home_now")]
+    [Markup.button.callback("📤 INVITE", "invite_friends"), Markup.button.callback("💼 FXPRO", "fxpro_info")],
+    [Markup.button.callback("🏠 HOME", "home_now")]
   ]));
 }
 
 async function showAffiliate(ctx) {
   return ctx.reply("💰 OXSHARE\n\nThis is separate from the StoneDigger game. Review the service, terms and risks before signing up. No earnings are guaranteed.\n\n⚠️ Third-party affiliate link.", Markup.inlineKeyboard([
     [Markup.button.url("💰 VISIT OXSHARE", OXSHARE_AFFILIATE_URL)],
+    [Markup.button.callback("💼 FXPRO", "fxpro_info")],
     [Markup.button.callback("🏠 BACK TO GAME", "home_now")]
+  ]));
+}
+
+async function showFxPro(ctx) {
+  return ctx.reply("💼 FXPRO PARTNER OFFER\n\nOpen an FxPro account through our partner link.\n\n⚠️ StoneDigger may receive compensation if you register through this referral link. This is not investment advice. CFDs are complex instruments and carry a high risk of losing money rapidly due to leverage. Availability depends on your country and applicable regulations.", Markup.inlineKeyboard([
+    [Markup.button.url("💼 JOIN FXPRO", FXPRO_AFFILIATE_URL)],
+    [Markup.button.callback("⛏️ BACK TO GAME", "home_now")]
   ]));
 }
 
@@ -129,14 +144,16 @@ bot.command("leaderboard", showLeaderboard);
 bot.command("status", showStatus);
 bot.command("premium", showPremium);
 bot.command("affiliate", showAffiliate);
-bot.command("community", (ctx) => ctx.reply("👥 STONEDIGGER COMMUNITY", Markup.inlineKeyboard([[Markup.button.url("👥 JOIN COMMUNITY", COMMUNITY_URL)], [Markup.button.callback("🏠 HOME", "home_now")]])));
-bot.help((ctx) => ctx.reply("⛏️ StoneDigger\n\nUse the buttons to play.\n\n/dig — Daily dig\n/referral — Invite friends\n/premium — Premium\n/leaderboard — Leaderboard\n/status — My stats\n/affiliate — OxShare\n/community — Community\n/terms — Terms\n/paysupport — Payment support", mainKeyboard()));
+bot.command("fxpro", showFxPro);
+bot.command("community", (ctx) => ctx.reply("👥 STONEDIGGER COMMUNITY", Markup.inlineKeyboard([[Markup.button.url("👥 JOIN COMMUNITY", COMMUNITY_URL)], [Markup.button.callback("💼 FXPRO", "fxpro_info")], [Markup.button.callback("🏠 HOME", "home_now")]])));
+bot.help((ctx) => ctx.reply("⛏️ StoneDigger\n\nUse the buttons to play.\n\n/dig — Daily dig\n/referral — Invite friends\n/premium — Premium\n/leaderboard — Leaderboard\n/status — My stats\n/affiliate — OxShare\n/fxpro — FxPro partner offer\n/community — Community\n/terms — Terms\n/paysupport — Payment support", mainKeyboard()));
 
 bot.action("home_now", async (ctx) => { await ctx.answerCbQuery(); return showHome(ctx); });
 bot.action("dig_now", async (ctx) => { await ctx.answerCbQuery("⛏️ Digging..."); return performDig(ctx); });
 bot.action("invite_friends", async (ctx) => { await ctx.answerCbQuery(); return showReferral(ctx); });
 bot.action("leaderboard_now", async (ctx) => { await ctx.answerCbQuery(); return showLeaderboard(ctx); });
 bot.action("premium_info", async (ctx) => { await ctx.answerCbQuery(); return showPremium(ctx); });
+bot.action("fxpro_info", async (ctx) => { await ctx.answerCbQuery(); return showFxPro(ctx); });
 bot.action("buy_premium", async (ctx) => {
   await ctx.answerCbQuery();
   await syncUser(ctx);
@@ -157,7 +174,7 @@ bot.on("successful_payment", async (ctx) => {
   return ctx.reply("✅ PAYMENT RECEIVED!\n⭐ 1 Star confirmed.\n🚀 Premium unlocked.", mainKeyboard());
 });
 
-bot.command("terms", (ctx) => ctx.reply("📜 StoneDigger Terms\n\nStoneDigger is an activity and referral bot. Activity points and leaderboard positions are not cash and do not guarantee earnings. Premium is currently a 1-Star test digital feature. Affiliate links are third-party links and commissions depend on the affiliate program's terms. Use the bot responsibly and do not spam referrals."));
+bot.command("terms", (ctx) => ctx.reply("📜 StoneDigger Terms\n\nStoneDigger is an activity and referral bot. Activity points and leaderboard positions are not cash and do not guarantee earnings. Premium is currently a 1-Star test digital feature. Affiliate links are third-party links and commissions depend on the affiliate program's terms. FxPro is a separate partner offer; availability depends on jurisdiction and CFDs carry a high risk of losing money. Use the bot responsibly and do not spam referrals."));
 bot.command("paysupport", (ctx) => ctx.reply("For payment support, contact the bot owner."));
 
 const server = http.createServer((req, res) => {
@@ -181,6 +198,7 @@ server.listen(port, async () => {
     { command: "leaderboard", description: "Leaderboard" },
     { command: "status", description: "My stats" },
     { command: "affiliate", description: "OxShare affiliate" },
+    { command: "fxpro", description: "FxPro partner offer" },
     { command: "community", description: "Join community" },
     { command: "help", description: "Help" },
     { command: "terms", description: "Terms" },
